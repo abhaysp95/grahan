@@ -11,6 +11,15 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
             }
         }
         matched
+    } else if pattern == "\\w" {
+        let mut matched = true;
+        for c in input_line.chars() {
+            if !c.is_ascii_alphanumeric() && c != '_' {
+                dbg!(c);
+                matched = false;
+            }
+        }
+        return matched;
     }
     else if pattern.chars().count() == 1 {
         return input_line.contains(pattern);
