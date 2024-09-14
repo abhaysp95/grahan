@@ -4,10 +4,10 @@ use std::process;
 
 #[derive(Debug)]
 enum RType {
-    ch(char),          // character
-    ccl(String, bool), // character group, +ve/-ve
-    cgd,               // character class digit
-    cgw,               // character class alphanumeric
+    Ch(char),          // character
+    Ccl(String, bool), // character group, +ve/-ve
+    Cgd,               // character class digit
+    Cgw,               // character class alphanumeric
 }
 
 fn get_regex_pattern(pattern: &str) -> Vec<RType> {
@@ -20,8 +20,8 @@ fn get_regex_pattern(pattern: &str) -> Vec<RType> {
         let c = chiter.next().unwrap();
         re_pattern.push(match c {
             '\\' => match chiter.next().unwrap() {
-                'd' => RType::cgd,
-                'w' => RType::cgw,
+                'd' => RType::Cgd,
+                'w' => RType::Cgw,
                 _ => unreachable!(),
             },
             '[' => {
@@ -40,10 +40,57 @@ fn get_regex_pattern(pattern: &str) -> Vec<RType> {
                     }
                     group.push(c);
                 }
-                RType::ccl(group, gmode)
+                RType::Ccl(group, gmode)
             }
-            _ => RType::ch(c),
+            _ => RType::Ch(c),
         });
+    }
+}
+
+// fn match_here(idx: usize, input_line: &str, re_pattern: &Vec<RType>) -> bool {
+//
+// }
+
+fn match_pattern_remastered(input_line: &str, re_pattern: &Vec<RType>) -> bool {
+    if input_line.is_empty() {
+        false
+    } else {
+        if match_pattern_remastered(&input_line[1..], re_pattern) {
+            println!("= {}", &input_line);
+            return true;
+        }
+        let input_chars = input_line.chars().collect::<Vec<_>>();
+        let mut idx = 0;
+        for re in re_pattern.iter() {
+            match re {
+                RType::Ch(c) if &input_chars[idx] != c => {
+                    return false;
+                },
+                RType::Ccl(group, mode) => {
+                    if *mode {
+                        let mut is_match = false;
+                        for cg in group.chars() {
+                            if cg == input_chars[idx] {
+                                is_match = true;
+                                break;
+                            }
+                        }
+                        if !is_match {
+                            return false;
+                        }
+                    } else {
+                       // for when mode is not true, will continue later
+                    }
+                }
+                _ => {},
+            }
+            idx += 1;
+        }
+        if input_line.len() == 3 {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -97,8 +144,14 @@ fn main() {
     io::stdin().read_line(&mut input_line).unwrap();
 
     let re_pattern = get_regex_pattern(&pattern);
-    for re in re_pattern {
+    for re in re_pattern.iter() {
         println!("{:?}", re)
+    }
+
+    if match_pattern_remastered(&input_line, &re_pattern) {
+        process::exit(0);
+    } else {
+        process::exit(1);
     }
 
     // if match_pattern(&input_line, &pattern) {
