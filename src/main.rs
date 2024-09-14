@@ -4,22 +4,26 @@ use std::process;
 
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
     if pattern == "\\d" {
-        let mut matched = false;
         for c in input_line.chars() {
             if c.is_ascii_digit() {
-                matched = true;
+                return true;
             }
         }
-        matched
+        false
     } else if pattern == "\\w" {
-        let mut matched = true;
         for c in input_line.chars() {
             if !c.is_ascii_alphanumeric() && c != '_' {
-                dbg!(c);
-                matched = false;
+                return false;
             }
         }
-        return matched;
+        true
+    } else if pattern.starts_with('[') && pattern.ends_with(']') {
+        for p in pattern[1..pattern.len()-1].chars() {
+            if input_line.contains(p) {
+                return true;
+            }
+        }
+        false
     }
     else if pattern.chars().count() == 1 {
         return input_line.contains(pattern);
