@@ -17,9 +17,17 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
             }
         }
         true
+    } else if pattern.starts_with("[^") && pattern.ends_with(']') {
+        let pattern = &pattern[2..pattern.len()-1];
+        for pc in pattern.chars() {
+            if input_line.contains(pc) {
+                return false;
+            }
+        }
+        true
     } else if pattern.starts_with('[') && pattern.ends_with(']') {
-        for p in pattern[1..pattern.len()-1].chars() {
-            if input_line.contains(p) {
+        for pc in pattern[1..pattern.len()-1].chars() {
+            if input_line.contains(pc) {
                 return true;
             }
         }
