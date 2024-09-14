@@ -3,7 +3,16 @@ use std::io;
 use std::process;
 
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
-    if pattern.chars().count() == 1 {
+    if pattern == "\\d" {
+        let mut matched = false;
+        for c in input_line.chars() {
+            if c.is_ascii_digit() {
+                matched = true;
+            }
+        }
+        matched
+    }
+    else if pattern.chars().count() == 1 {
         return input_line.contains(pattern);
     } else {
         panic!("Unhandled pattern: {}", pattern)
