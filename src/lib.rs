@@ -1,3 +1,5 @@
+use std::str::Chars;
+
 #[derive(Debug)]
 pub enum RType {
     Ch(char),          // character
@@ -6,12 +8,33 @@ pub enum RType {
     Cgw,               // character class alphanumeric
 }
 
-pub fn get_regex_pattern(pattern: &str) -> Vec<RType> {
+// NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
+// https://learn.microsoft.com/en-us/dotnet/standard/base-types/anchors-in-regular-expressions#start-of-string-only-a
+pub enum StringAnchor {
+    Start, End, None
+}
+
+pub struct RE {
+    rtype: Vec<RType>,
+    anchor: StringAnchor,
+}
+
+pub fn get_regex_pattern(pattern: &str) -> RE {
     let mut re_pattern: Vec<RType> = vec![];
-    let mut chiter = pattern.chars().peekable();
+    let mut chiter: std::iter::Peekable<Chars>;
+    let mut string_anchor = StringAnchor::None;
+    if pattern.starts_with('^') {
+        string_anchor = StringAnchor::Start;
+        chiter = pattern[1..].chars().peekable();
+    } else {
+        chiter = pattern.chars().peekable();
+    }
     'out: loop {
         if chiter.peek().is_none() {
-            break 'out re_pattern;
+            break 'out RE {
+                rtype: re_pattern,
+                anchor: string_anchor,
+            }
         }
         let c = chiter.next().unwrap();
         re_pattern.push(match c {
@@ -51,14 +74,7 @@ pub fn get_regex_pattern(pattern: &str) -> Vec<RType> {
     }
 }
 
-pub fn match_pattern(input_line: &str, re_pattern: &Vec<RType>) -> bool {
-    if input_line.is_empty() {
-        false
-    } else {
-        if match_pattern(&input_line[1..], re_pattern) {
-            // println!("= {}", &input_line);
-            return true;
-        }
+fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
         let input_chars = input_line.chars().collect::<Vec<_>>();
         let mut idx = 0;
         for re in re_pattern.iter() {
@@ -108,6 +124,21 @@ pub fn match_pattern(input_line: &str, re_pattern: &Vec<RType>) -> bool {
                 _ => {}
             }
             idx += 1;
+        }
+    true
+}
+
+pub fn match_pattern(input_line: &str, re: &RE) -> bool {
+    if input_line.is_empty() {
+        false
+    } else if let StringAnchor::Start = re.anchor {
+        match_here(input_line, &re.rtype)
+    } else {
+        if match_pattern(&input_line[1..], re) {
+            return true;
+        }
+        if !match_here(input_line, &re.rtype) {
+            return false;
         }
         true
     }
