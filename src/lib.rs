@@ -1,6 +1,6 @@
 use std::str::Chars;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum RType {
     Ch(char),          // character
     Ccl(String, bool), // character group, +ve/-ve
@@ -11,12 +11,14 @@ pub enum RType {
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
 // https://learn.microsoft.com/en-us/dotnet/standard/base-types/anchors-in-regular-expressions#start-of-string-only-a
+#[derive(Debug, Clone)]
 pub enum StringAnchor {
     Start,
     End,
     None,
 }
 
+#[derive(Debug)]
 pub struct RE {
     pub rtype: Vec<RType>,
     pub anchor: StringAnchor,
@@ -44,6 +46,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 anchor: string_anchor,
             };
         }
+
         let c = chiter.next().unwrap();
         match c {
             '+' if pidx >= 1 => {
@@ -51,6 +54,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     panic!("Quantifier can't be applied to another quantifier")
                 }
                 re_pattern[pidx-1] = RType::Qplus(Box::new(re_pattern[pidx-1].clone()));
+                pidx -= 1;
             }
             '\\' => {
                 // NOTE: add support to match '\' too, currently this logic ignores it
@@ -62,6 +66,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     'w' => RType::Cgw,
                     '+' => RType::Ch('+'),
                     _ => {
+                        #[cfg(debug_assertions)]
                         println!("=> {}", c);
                         unreachable!();
                     }
@@ -92,38 +97,31 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
     }
 }
 
-fn match_quantifier(input_line: &str, rtype: &RType) -> usize {
+fn match_quantifier(input_line: &str, re: &RE) -> usize {
     let mut idx: usize = 0;
     // NOTE: this will not create cycle, because a quantifer will not have another quantifier as
     // RType
-    while match_here(&input_line[idx..], &vec![rtype.clone()]) {
+    while match_here(&input_line[idx..], re) {
         idx += 1;
     }
     idx
 }
 
-fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
+fn match_here(input_line: &str, re_pattern: &RE) -> bool {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
-    for re in re_pattern.iter() {
+    let rtype_iter = re_pattern.rtype.iter().peekable();
+    for re in rtype_iter {
         if idx == input_chars.len() {
-            // NOTE: this will not be false if current RType is a quantifier
-            if let RType::Qplus(_) = re {
-                return true;
-            }
             return false;
         }
         match re {
             RType::Qplus(rtype) => {
-                // let mut tidx: usize = idx-1;
-                // TODO: work here in logic
-                // if match_here(&input_line[tidx+1..], &vec![*rtype.clone()]) {
-                //     tidx += 1;
-                // }
-                // if tidx < idx {
-                //     return false;
-                // }
-                let tidx = match_quantifier(&input_line[idx..], rtype.as_ref());
+                let tidx = match_quantifier(&input_line[idx..], &RE {
+                    rtype: vec![rtype.as_ref().clone()],
+                    anchor: StringAnchor::None,  // match_quantifier doesn't need to know about StringAnchor
+                });
+
                 if tidx == 0 {
                     return false;
                 }
@@ -172,9 +170,11 @@ fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
         }
         idx += 1;
     }
-    // if idx < input_chars.len() {
-    //     // check for StringAnchor::End here
-    // }
+    if idx < input_chars.len() {
+        if let StringAnchor::End = re_pattern.anchor {
+            return false;
+        }
+    }
     true
 }
 
@@ -182,12 +182,12 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
     if input_line.is_empty() {
         false
     } else if let StringAnchor::Start = re.anchor {
-        match_here(input_line, &re.rtype)
+        match_here(input_line, &re)
     } else {
         if match_pattern(&input_line[1..], re) {
             return true;
         }
-        if !match_here(input_line, &re.rtype) {
+        if !match_here(input_line, &re) {
             return false;
         } /* else if let StringAnchor::End = re.anchor {
             // NOTE: will need to calculate the total len of chars matched based on pattern
