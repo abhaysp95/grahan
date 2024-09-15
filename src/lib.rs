@@ -7,6 +7,7 @@ pub enum RType {
     Cgd,               // character class digit
     Cgw,               // character class alphanumeric
     Qplus(Box<RType>), // match one ore more time for previous RType
+    Qquestion(Box<RType>), // match zero or one time for previous RType
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -49,11 +50,18 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
 
         let c = chiter.next().unwrap();
         match c {
-            '+' if pidx >= 1 => {
-                if let RType::Qplus(_) = re_pattern[pidx - 1] {
-                    panic!("Quantifier can't be applied to another quantifier")
+            '+'|'?' if pidx >= 1 => {
+                match re_pattern[pidx-1] {
+                    RType::Qplus(_)|RType::Qquestion(_) => {
+                        panic!("Quantifier can't be applied to another quantifier")
+                    },
+                    _ => {},
                 }
-                re_pattern[pidx - 1] = RType::Qplus(Box::new(re_pattern[pidx - 1].clone()));
+                if c == '+' {
+                    re_pattern[pidx - 1] = RType::Qplus(Box::new(re_pattern[pidx - 1].clone()));
+                } else {
+                    re_pattern[pidx - 1] = RType::Qquestion(Box::new(re_pattern[pidx - 1].clone()));
+                }
                 pidx -= 1;
             }
             '\\' => {
@@ -99,10 +107,30 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
 
 fn match_quantifier(input_line: &str, re: &RE) -> usize {
     let mut idx: usize = 0;
-    // NOTE: this will not create cycle, because a quantifer will not have another quantifier as
-    // RType
-    while match_here(&input_line[idx..], re) {
-        idx += 1;
+    // NOTE: using match_here will not create cycle, because a quantifer will not have another
+    // quantifier as RType
+    assert_eq!(re.rtype.len(), 1);
+
+    println!("+|? {:?}: {:?}", &input_line, &re);
+    match &re.rtype[0] {
+        RType::Qplus(rtype) | RType::Qquestion(rtype) => {
+            let new_re = RE {
+                rtype: vec![*rtype.clone()],
+                anchor: StringAnchor::None,
+            };
+            println!("+|? rtype: {:?}, {:?}", re.rtype[0], &re);
+            if let RType::Qplus(_) = re.rtype[0] {
+                println!("+|? [if] new_re: {:?}", &new_re);
+                while match_here(&input_line[idx..], &new_re) {
+                    idx += 1;
+                }
+            } else if let RType::Qquestion(_) = re.rtype[0] {
+                if match_here(&input_line[idx..], &new_re) {
+                    idx += 1;
+                }
+            }
+        },
+        _ => {},
     }
     idx
 }
@@ -111,28 +139,35 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
     let rtype_iter = re_pattern.rtype.iter().peekable();
-    for re in rtype_iter {
+    println!("[here] {:?}: {:?}", &input_line, re_pattern);
+    for rtype in rtype_iter {
         if idx == input_chars.len() {
             return false;
         }
-        match re {
-            RType::Qplus(rtype) => {
+        println!("[here for] {:?}: {:?}", &input_line, rtype);
+        match rtype {
+            RType::Qplus(_) | RType::Qquestion(_) => {
+                println!("[here for] calling +|? for rtype: {:?}", rtype);
                 let tidx = match_quantifier(
                     &input_line[idx..],
                     &RE {
-                        rtype: vec![rtype.as_ref().clone()],
+                        rtype: vec![rtype.clone()],
                         anchor: StringAnchor::None, // match_quantifier doesn't need to know about StringAnchor
                     },
                 );
-
-                if tidx == 0 {
-                    return false;
+                println!("[here for] +|? tidx: {}", tidx);
+                if let RType::Qplus(_) = rtype {
+                    if tidx == 0 {
+                        return false;
+                    }
                 }
+                // TODO: what if idx is 0, and tidx is also 0
+                // Fix this
                 idx += tidx - 1;
-            }
+            },
             RType::Ch(c) if &input_chars[idx] != c => {
                 return false;
-            }
+            },
             RType::Ccl(group, mode) => {
                 if *mode {
                     let mut is_match = false;
@@ -158,17 +193,17 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         return false;
                     }
                 }
-            }
+            },
             RType::Cgd => {
                 if !input_chars[idx].is_ascii_digit() {
                     return false;
                 }
-            }
+            },
             RType::Cgw => {
                 if !input_chars[idx].is_ascii_alphanumeric() {
                     return false;
                 }
-            }
+            },
             _ => {}
         }
         idx += 1;
