@@ -11,7 +11,9 @@ pub enum RType {
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
 // https://learn.microsoft.com/en-us/dotnet/standard/base-types/anchors-in-regular-expressions#start-of-string-only-a
 pub enum StringAnchor {
-    Start, End, None
+    Start,
+    End,
+    None,
 }
 
 pub struct RE {
@@ -30,7 +32,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
     }
     if pattern.ends_with('$') {
         string_anchor = StringAnchor::End;
-        pattern = &pattern[..pattern.len()-1];
+        pattern = &pattern[..pattern.len() - 1];
     }
     chiter = pattern.chars().peekable();
     'out: loop {
@@ -38,7 +40,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
             break 'out RE {
                 rtype: re_pattern,
                 anchor: string_anchor,
-            }
+            };
         }
         let c = chiter.next().unwrap();
         re_pattern.push(match c {
@@ -79,56 +81,56 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
 }
 
 fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
-        let input_chars = input_line.chars().collect::<Vec<_>>();
-        let mut idx = 0;
-        for re in re_pattern.iter() {
-            if idx == input_chars.len() {
+    let input_chars = input_line.chars().collect::<Vec<_>>();
+    let mut idx = 0;
+    for re in re_pattern.iter() {
+        if idx == input_chars.len() {
+            return false;
+        }
+        match re {
+            RType::Ch(c) if &input_chars[idx] != c => {
                 return false;
             }
-            match re {
-                RType::Ch(c) if &input_chars[idx] != c => {
+            RType::Ccl(group, mode) => {
+                if *mode {
+                    let mut is_match = false;
+                    for cg in group.chars() {
+                        if cg == input_chars[idx] {
+                            is_match = true;
+                            break;
+                        }
+                    }
+                    if !is_match {
+                        return false;
+                    }
+                } else {
+                    // for when mode is not true, will continue later
+                    let mut is_match = true;
+                    for cg in group.chars() {
+                        if cg == input_chars[idx] {
+                            is_match = false;
+                            break;
+                        }
+                    }
+                    if !is_match {
+                        return false;
+                    }
+                }
+            }
+            RType::Cgd => {
+                if !input_chars[idx].is_ascii_digit() {
                     return false;
                 }
-                RType::Ccl(group, mode) => {
-                    if *mode {
-                        let mut is_match = false;
-                        for cg in group.chars() {
-                            if cg == input_chars[idx] {
-                                is_match = true;
-                                break;
-                            }
-                        }
-                        if !is_match {
-                            return false;
-                        }
-                    } else {
-                        // for when mode is not true, will continue later
-                        let mut is_match = true;
-                        for cg in group.chars() {
-                            if cg == input_chars[idx] {
-                                is_match = false;
-                                break;
-                            }
-                        }
-                        if !is_match {
-                            return false;
-                        }
-                    }
-                }
-                RType::Cgd => {
-                    if !input_chars[idx].is_ascii_digit() {
-                        return false;
-                    }
-                }
-                RType::Cgw => {
-                    if !input_chars[idx].is_ascii_alphanumeric() {
-                        return false;
-                    }
-                }
-                _ => {}
             }
-            idx += 1;
+            RType::Cgw => {
+                if !input_chars[idx].is_ascii_alphanumeric() {
+                    return false;
+                }
+            }
+            _ => {}
         }
+        idx += 1;
+    }
     true
 }
 
