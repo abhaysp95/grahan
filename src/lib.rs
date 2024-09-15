@@ -38,7 +38,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         pattern = &pattern[..pattern.len() - 1];
     }
     chiter = pattern.chars().peekable();
-    let mut pidx: usize = 0;  // pattern index
+    let mut pidx: usize = 0; // pattern index
     'out: loop {
         if chiter.peek().is_none() {
             break 'out RE {
@@ -50,10 +50,10 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         let c = chiter.next().unwrap();
         match c {
             '+' if pidx >= 1 => {
-                if let RType::Qplus(_) = re_pattern[pidx-1] {
+                if let RType::Qplus(_) = re_pattern[pidx - 1] {
                     panic!("Quantifier can't be applied to another quantifier")
                 }
-                re_pattern[pidx-1] = RType::Qplus(Box::new(re_pattern[pidx-1].clone()));
+                re_pattern[pidx - 1] = RType::Qplus(Box::new(re_pattern[pidx - 1].clone()));
                 pidx -= 1;
             }
             '\\' => {
@@ -117,10 +117,13 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
         }
         match re {
             RType::Qplus(rtype) => {
-                let tidx = match_quantifier(&input_line[idx..], &RE {
-                    rtype: vec![rtype.as_ref().clone()],
-                    anchor: StringAnchor::None,  // match_quantifier doesn't need to know about StringAnchor
-                });
+                let tidx = match_quantifier(
+                    &input_line[idx..],
+                    &RE {
+                        rtype: vec![rtype.as_ref().clone()],
+                        anchor: StringAnchor::None, // match_quantifier doesn't need to know about StringAnchor
+                    },
+                );
 
                 if tidx == 0 {
                     return false;
@@ -189,13 +192,7 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
         }
         if !match_here(input_line, &re) {
             return false;
-        } /* else if let StringAnchor::End = re.anchor {
-            // NOTE: will need to calculate the total len of chars matched based on pattern
-            // beforehand for this to work, once we have to much for multiple occurences
-            if input_line.len() > re.rtype.len() {
-                return false;
-            }
-        } */
+        }
         true
     }
 }
