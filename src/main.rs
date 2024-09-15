@@ -47,21 +47,20 @@ fn get_regex_pattern(pattern: &str) -> Vec<RType> {
     }
 }
 
-// fn match_here(idx: usize, input_line: &str, re_pattern: &Vec<RType>) -> bool {
-//
-// }
-
 fn match_pattern_remastered(input_line: &str, re_pattern: &Vec<RType>) -> bool {
     if input_line.is_empty() {
         false
     } else {
         if match_pattern_remastered(&input_line[1..], re_pattern) {
-            println!("= {}", &input_line);
+            // println!("= {}", &input_line);
             return true;
         }
         let input_chars = input_line.chars().collect::<Vec<_>>();
         let mut idx = 0;
         for re in re_pattern.iter() {
+            if idx == input_chars.len() {
+                return false;
+            }
             match re {
                 RType::Ch(c) if &input_chars[idx] != c => {
                     return false;
@@ -80,17 +79,33 @@ fn match_pattern_remastered(input_line: &str, re_pattern: &Vec<RType>) -> bool {
                         }
                     } else {
                        // for when mode is not true, will continue later
+                        let mut is_match = true;
+                        for cg in group.chars() {
+                            if cg == input_chars[idx] {
+                                is_match = false;
+                                break;
+                            }
+                        }
+                        if !is_match {
+                            return false;
+                        }
+                    }
+                }
+                RType::Cgd => {
+                    if !input_chars[idx].is_ascii_digit() {
+                        return false;
+                    }
+                },
+                RType::Cgw => {
+                    if !input_chars[idx].is_ascii_alphanumeric() {
+                        return false;
                     }
                 }
                 _ => {},
             }
             idx += 1;
         }
-        if input_line.len() == 3 {
-            true
-        } else {
-            false
-        }
+        true
     }
 }
 
@@ -144,9 +159,9 @@ fn main() {
     io::stdin().read_line(&mut input_line).unwrap();
 
     let re_pattern = get_regex_pattern(&pattern);
-    for re in re_pattern.iter() {
-        println!("{:?}", re)
-    }
+    // for re in re_pattern.iter() {
+    //     println!("{:?}", re)
+    // }
 
     if match_pattern_remastered(&input_line, &re_pattern) {
         process::exit(0);
