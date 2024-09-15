@@ -17,6 +17,10 @@ fn main() {
     io::stdin().read_line(&mut input_line).unwrap();
 
     let re_pattern = get_regex_pattern(&pattern);
+    #[cfg(debug_assertions)]
+    for re in re_pattern.rtype.iter() {
+        println!("{:?}", re);
+    }
 
     if match_pattern(&input_line, &re_pattern) {
         process::exit(0);
