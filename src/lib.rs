@@ -47,6 +47,9 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         let c = chiter.next().unwrap();
         match c {
             '+' if pidx >= 1 => {
+                if let RType::Qplus(_) = re_pattern[pidx-1] {
+                    panic!("Quantifier can't be applied to another quantifier")
+                }
                 re_pattern[pidx-1] = RType::Qplus(Box::new(re_pattern[pidx-1].clone()));
             }
             '\\' => {
@@ -89,15 +92,43 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
     }
 }
 
+fn match_quantifier(input_line: &str, rtype: &RType) -> usize {
+    let mut idx: usize = 0;
+    // NOTE: this will not create cycle, because a quantifer will not have another quantifier as
+    // RType
+    while match_here(&input_line[idx..], &vec![rtype.clone()]) {
+        idx += 1;
+    }
+    idx
+}
+
 fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
     for re in re_pattern.iter() {
         if idx == input_chars.len() {
             // NOTE: this will not be false if current RType is a quantifier
+            if let RType::Qplus(_) = re {
+                return true;
+            }
             return false;
         }
         match re {
+            RType::Qplus(rtype) => {
+                // let mut tidx: usize = idx-1;
+                // TODO: work here in logic
+                // if match_here(&input_line[tidx+1..], &vec![*rtype.clone()]) {
+                //     tidx += 1;
+                // }
+                // if tidx < idx {
+                //     return false;
+                // }
+                let tidx = match_quantifier(&input_line[idx..], rtype.as_ref());
+                if tidx == 0 {
+                    return false;
+                }
+                idx += tidx - 1;
+            }
             RType::Ch(c) if &input_chars[idx] != c => {
                 return false;
             }
