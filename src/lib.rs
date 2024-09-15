@@ -23,12 +23,16 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
     let mut re_pattern: Vec<RType> = vec![];
     let mut chiter: std::iter::Peekable<Chars>;
     let mut string_anchor = StringAnchor::None;
+    let mut pattern = &pattern[..];
     if pattern.starts_with('^') {
         string_anchor = StringAnchor::Start;
-        chiter = pattern[1..].chars().peekable();
-    } else {
-        chiter = pattern.chars().peekable();
+        pattern = &pattern[1..];
     }
+    if pattern.ends_with('$') {
+        string_anchor = StringAnchor::End;
+        pattern = &pattern[..pattern.len()-1];
+    }
+    chiter = pattern.chars().peekable();
     'out: loop {
         if chiter.peek().is_none() {
             break 'out RE {
@@ -139,6 +143,12 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
         }
         if !match_here(input_line, &re.rtype) {
             return false;
+        } else if let StringAnchor::End = re.anchor {
+            // NOTE: will need to calculate the total len of chars matched based on pattern
+            // beforehand for this to work, once we have to much for multiple occurences
+            if input_line.len() > re.rtype.len() {
+                return false;
+            }
         }
         true
     }
