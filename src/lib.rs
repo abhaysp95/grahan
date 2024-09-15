@@ -199,3 +199,23 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
         true
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{get_regex_pattern, match_pattern, match_quantifier};
+
+    #[test]
+    fn quantifier_plus() {
+        let re = get_regex_pattern("o+");
+        assert_eq!(match_quantifier("oo", &re), 2);
+    }
+
+    #[test]
+    fn full_pattern_quantifier_plus() {
+        let re_pattern = get_regex_pattern("g+o+$");
+        let input_line = "logs are good";
+        assert_eq!(match_pattern(&input_line, &re_pattern), false);
+        let re_pattern = get_regex_pattern("g+o+d$");
+        assert_eq!(match_pattern(&input_line, &re_pattern), true);
+    }
+}
