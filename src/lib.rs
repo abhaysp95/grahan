@@ -1,11 +1,12 @@
 use std::str::Chars;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum RType {
     Ch(char),          // character
     Ccl(String, bool), // character group, +ve/-ve
     Cgd,               // character class digit
     Cgw,               // character class alphanumeric
+    Qplus(Box<RType>), // match one ore more time for previous RType
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -17,8 +18,8 @@ pub enum StringAnchor {
 }
 
 pub struct RE {
-    rtype: Vec<RType>,
-    anchor: StringAnchor,
+    pub rtype: Vec<RType>,
+    pub anchor: StringAnchor,
 }
 
 pub fn get_regex_pattern(pattern: &str) -> RE {
@@ -35,6 +36,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         pattern = &pattern[..pattern.len() - 1];
     }
     chiter = pattern.chars().peekable();
+    let mut pidx: usize = 0;  // pattern index
     'out: loop {
         if chiter.peek().is_none() {
             break 'out RE {
@@ -43,19 +45,24 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
             };
         }
         let c = chiter.next().unwrap();
-        re_pattern.push(match c {
+        match c {
+            '+' if pidx >= 1 => {
+                re_pattern[pidx-1] = RType::Qplus(Box::new(re_pattern[pidx-1].clone()));
+            }
             '\\' => {
+                // NOTE: add support to match '\' too, currently this logic ignores it
                 while let Some('\\') = chiter.peek() {
                     chiter.next();
                 }
-                match chiter.next().unwrap() {
+                re_pattern.push(match chiter.next().unwrap() {
                     'd' => RType::Cgd,
                     'w' => RType::Cgw,
+                    '+' => RType::Ch('+'),
                     _ => {
                         println!("=> {}", c);
                         unreachable!();
                     }
-                }
+                });
             }
             '[' => {
                 // let's assume that we'll find ']' later on always, for now
@@ -73,10 +80,12 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     }
                     group.push(c);
                 }
-                RType::Ccl(group, gmode)
+                re_pattern.push(RType::Ccl(group, gmode));
             }
-            _ => RType::Ch(c),
-        });
+            _ => re_pattern.push(RType::Ch(c)),
+        };
+
+        pidx += 1;
     }
 }
 
@@ -85,6 +94,7 @@ fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
     let mut idx = 0;
     for re in re_pattern.iter() {
         if idx == input_chars.len() {
+            // NOTE: this will not be false if current RType is a quantifier
             return false;
         }
         match re {
@@ -131,6 +141,9 @@ fn match_here(input_line: &str, re_pattern: &Vec<RType>) -> bool {
         }
         idx += 1;
     }
+    // if idx < input_chars.len() {
+    //     // check for StringAnchor::End here
+    // }
     true
 }
 
@@ -145,13 +158,13 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
         }
         if !match_here(input_line, &re.rtype) {
             return false;
-        } else if let StringAnchor::End = re.anchor {
+        } /* else if let StringAnchor::End = re.anchor {
             // NOTE: will need to calculate the total len of chars matched based on pattern
             // beforehand for this to work, once we have to much for multiple occurences
             if input_line.len() > re.rtype.len() {
                 return false;
             }
-        }
+        } */
         true
     }
 }
