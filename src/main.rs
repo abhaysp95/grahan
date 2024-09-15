@@ -19,10 +19,18 @@ fn get_regex_pattern(pattern: &str) -> Vec<RType> {
         }
         let c = chiter.next().unwrap();
         re_pattern.push(match c {
-            '\\' => match chiter.next().unwrap() {
-                'd' => RType::Cgd,
-                'w' => RType::Cgw,
-                _ => unreachable!(),
+            '\\' => {
+                while let Some('\\') = chiter.peek() {
+                    chiter.next();
+                }
+                match chiter.next().unwrap() {
+                    'd' => RType::Cgd,
+                    'w' => RType::Cgw,
+                    _ => {
+                        println!("=> {}", c);
+                        unreachable!();
+                    }
+                }
             },
             '[' => {
                 // let's assume that we'll find ']' later on always, for now
