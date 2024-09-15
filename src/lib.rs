@@ -51,11 +51,11 @@ pub fn get_regex_pattern(pattern: &str) -> Vec<RType> {
     }
 }
 
-pub fn match_pattern_remastered(input_line: &str, re_pattern: &Vec<RType>) -> bool {
+pub fn match_pattern(input_line: &str, re_pattern: &Vec<RType>) -> bool {
     if input_line.is_empty() {
         false
     } else {
-        if match_pattern_remastered(&input_line[1..], re_pattern) {
+        if match_pattern(&input_line[1..], re_pattern) {
             // println!("= {}", &input_line);
             return true;
         }

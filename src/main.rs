@@ -2,7 +2,7 @@ use std::env;
 use std::io;
 use std::process;
 
-use codecrafters_grep::{get_regex_pattern, match_pattern_remastered};
+use codecrafters_grep::{get_regex_pattern, match_pattern};
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
 
     let re_pattern = get_regex_pattern(&pattern);
 
-    if match_pattern_remastered(&input_line, &re_pattern) {
+    if match_pattern(&input_line, &re_pattern) {
         process::exit(0);
     } else {
         process::exit(1);
