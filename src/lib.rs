@@ -8,6 +8,7 @@ pub enum RType {
     Cgw,                   // character class alphanumeric
     Qplus(Box<RType>),     // match one ore more time for previous RType
     Qquestion(Box<RType>), // match zero or one time for previous RType
+    Wildcard,              // match any character
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -65,7 +66,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 pidx -= 1;
             }
             '\\' => {
-                // NOTE: add support to match '\' too, currently this logic ignores it
+                // TODO: add support to match '\' too, currently this logic ignores it
                 while let Some('\\') = chiter.peek() {
                     chiter.next();
                 }
@@ -98,6 +99,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 }
                 re_pattern.push(RType::Ccl(group, gmode));
             }
+            '.' => re_pattern.push(RType::Wildcard),
             _ => re_pattern.push(RType::Ch(c)),
         };
 
@@ -214,6 +216,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                     return false;
                 }
             }
+            RType::Wildcard => {} // do nothing
             _ => {}
         }
         idx += 1;
