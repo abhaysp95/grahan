@@ -168,7 +168,9 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         return false;
                     }
                 }
-                if tidx > 0 {  // there's no point in subtracting if there's no match
+                if tidx == 0 && idx != 0 {
+                    idx -= 1;  // no match, no increase (idx += 1 will be done at the end)
+                } else if tidx > 0 {  // there's no point in subtracting if there's no match
                     idx += tidx - 1;
                 }
             },
