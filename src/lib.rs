@@ -2,11 +2,11 @@ use std::str::Chars;
 
 #[derive(Debug, Clone)]
 pub enum RType {
-    Ch(char),          // character
-    Ccl(String, bool), // character group, +ve/-ve
-    Cgd,               // character class digit
-    Cgw,               // character class alphanumeric
-    Qplus(Box<RType>), // match one ore more time for previous RType
+    Ch(char),              // character
+    Ccl(String, bool),     // character group, +ve/-ve
+    Cgd,                   // character class digit
+    Cgw,                   // character class alphanumeric
+    Qplus(Box<RType>),     // match one ore more time for previous RType
     Qquestion(Box<RType>), // match zero or one time for previous RType
 }
 
@@ -50,12 +50,12 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
 
         let c = chiter.next().unwrap();
         match c {
-            '+'|'?' if pidx >= 1 => {
-                match re_pattern[pidx-1] {
-                    RType::Qplus(_)|RType::Qquestion(_) => {
+            '+' | '?' if pidx >= 1 => {
+                match re_pattern[pidx - 1] {
+                    RType::Qplus(_) | RType::Qquestion(_) => {
                         panic!("Quantifier can't be applied to another quantifier")
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
                 if c == '+' {
                     re_pattern[pidx - 1] = RType::Qplus(Box::new(re_pattern[pidx - 1].clone()));
@@ -132,8 +132,8 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
                     idx += 1;
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
     idx
 }
@@ -169,14 +169,15 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                     }
                 }
                 if tidx == 0 && idx != 0 {
-                    idx -= 1;  // no match, no increase (idx += 1 will be done at the end)
-                } else if tidx > 0 {  // there's no point in subtracting if there's no match
+                    idx -= 1; // no match, no increase (idx += 1 will be done at the end)
+                } else if tidx > 0 {
+                    // there's no point in subtracting if there's no match
                     idx += tidx - 1;
                 }
-            },
+            }
             RType::Ch(c) if &input_chars[idx] != c => {
                 return false;
-            },
+            }
             RType::Ccl(group, mode) => {
                 if *mode {
                     let mut is_match = false;
@@ -202,17 +203,17 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         return false;
                     }
                 }
-            },
+            }
             RType::Cgd => {
                 if !input_chars[idx].is_ascii_digit() {
                     return false;
                 }
-            },
+            }
             RType::Cgw => {
                 if !input_chars[idx].is_ascii_alphanumeric() {
                     return false;
                 }
-            },
+            }
             _ => {}
         }
         idx += 1;
@@ -259,7 +260,6 @@ mod test {
         let re_pattern = get_regex_pattern("g+o+d$");
         assert_eq!(match_pattern(&input_line, &re_pattern), true);
     }
-
 
     #[test]
     fn full_pattern_quantifier_question() {
