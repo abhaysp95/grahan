@@ -84,7 +84,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
             },
             '(' => {
                 // get_regex_pattern(chiter.collect())
-                let re_left = get_regex_pattern(&cpattern[idx..].iter().collect::<String>());
+                let re_left = get_regex_pattern(&cpattern[idx+1..].iter().collect::<String>());
                 let mut found = false;
                 while idx < cpattern.len() {
                     if cpattern[idx] == '|' {
