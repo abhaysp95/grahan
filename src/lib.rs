@@ -259,4 +259,15 @@ mod test {
         let re_pattern = get_regex_pattern("g+o+d$");
         assert_eq!(match_pattern(&input_line, &re_pattern), true);
     }
+
+
+    #[test]
+    fn full_pattern_quantifier_question() {
+        let re_pattern = get_regex_pattern("g+l?o+d$");
+        let input_line = "logs are good";
+        assert_eq!(match_pattern(&input_line, &re_pattern), true);
+        let re_pattern = get_regex_pattern("ca?t");
+        let input_line = "cat";
+        assert_eq!(match_pattern(&input_line, &re_pattern), true);
+    }
 }
