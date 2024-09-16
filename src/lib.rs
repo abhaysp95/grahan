@@ -1,13 +1,13 @@
 #[derive(Debug, Clone)]
 pub enum RType {
-    Ch(char),              // character
-    Ccl(String, bool),     // character group, +ve/-ve
-    Cgd,                   // character class digit
-    Cgw,                   // character class alphanumeric
-    Qplus(Box<RType>),     // match one ore more time for previous RType
-    Qquestion(Box<RType>), // match zero or one time for previous RType
-    Wildcard,              // match any character
-    AltOr(Box<Vec<RType>>, Box<Vec<RType>>) // match (a|b), a or b
+    Ch(char),                                // character
+    Ccl(String, bool),                       // character group, +ve/-ve
+    Cgd,                                     // character class digit
+    Cgw,                                     // character class alphanumeric
+    Qplus(Box<RType>),                       // match one ore more time for previous RType
+    Qquestion(Box<RType>),                   // match zero or one time for previous RType
+    Wildcard,                                // match any character
+    AltOr(Box<Vec<RType>>, Box<Vec<RType>>), // match (a|b), a or b
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -67,7 +67,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
             }
             '\\' => {
                 // TODO: add support to match '\' too, currently this logic ignores it
-                while '\\' == cpattern[idx+1] {
+                while '\\' == cpattern[idx + 1] {
                     idx += 1;
                 }
                 idx += 1;
@@ -81,10 +81,10 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                         unreachable!();
                     }
                 });
-            },
+            }
             '(' => {
                 // get_regex_pattern(chiter.collect())
-                let re_left = get_regex_pattern(&cpattern[idx+1..].iter().collect::<String>());
+                let re_left = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                 let mut found = false;
                 while idx < cpattern.len() {
                     if cpattern[idx] == '|' {
@@ -96,7 +96,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 if !found {
                     panic!("Invalid regex pattern provided. Missing | for alternation.");
                 }
-                let re_right = get_regex_pattern(&cpattern[idx+1..].iter().collect::<String>());
+                let re_right = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                 found = false;
                 while idx < cpattern.len() {
                     if cpattern[idx] == ')' {
@@ -108,20 +108,23 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 if !found {
                     panic!("Invalid regex pattern provided. Missing closing ) for opened (")
                 }
-                re_pattern.push(RType::AltOr(Box::new(re_left.rtype), Box::new(re_right.rtype)));
-            },
-            '|'|')' => {
+                re_pattern.push(RType::AltOr(
+                    Box::new(re_left.rtype),
+                    Box::new(re_right.rtype),
+                ));
+            }
+            '|' | ')' => {
                 // should go back to '(' match block
                 return RE {
                     rtype: re_pattern,
                     anchor: StringAnchor::None,
                 };
-            },
+            }
             '[' => {
                 // let's assume that we'll find ']' later on always, for now
                 let mut gmode = true;
-                if idx+1 < cpattern.len() {
-                    if cpattern[idx+1] == '^' {
+                if idx + 1 < cpattern.len() {
+                    if cpattern[idx + 1] == '^' {
                         gmode = false;
                         idx += 1;
                     }
@@ -135,7 +138,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     idx += 1;
                 }
                 re_pattern.push(RType::Ccl(group, gmode));
-            },
+            }
             '.' => re_pattern.push(RType::Wildcard),
             _ => re_pattern.push(RType::Ch(cpattern[idx])),
         };
@@ -213,19 +216,25 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     // there's no point in subtracting if there's no match
                     idx += tidx - 1;
                 }
-            },
+            }
             RType::AltOr(re_left, re_right) => {
                 // NOTE: considering that the alternation will happen where len of rtype in re_left
                 // and re_right is going to be same and no Qplus or Qquestion is going to be used
-                let left_status = match_here(&input_line[idx..], &RE {
-                    rtype: re_left.as_ref().clone(),
-                    anchor: StringAnchor::None,
-                });
-                if !left_status.0 {
-                    let right_status = match_here(&input_line[idx..], &RE {
-                        rtype: re_right.as_ref().clone(),
+                let left_status = match_here(
+                    &input_line[idx..],
+                    &RE {
+                        rtype: re_left.as_ref().clone(),
                         anchor: StringAnchor::None,
-                    });
+                    },
+                );
+                if !left_status.0 {
+                    let right_status = match_here(
+                        &input_line[idx..],
+                        &RE {
+                            rtype: re_right.as_ref().clone(),
+                            anchor: StringAnchor::None,
+                        },
+                    );
                     if !right_status.0 {
                         return (false, idx + left_status.1);
                     }
@@ -237,7 +246,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                         idx += left_status.1 - 1;
                     }
                 }
-            },
+            }
             RType::Ch(c) if &input_chars[idx] != c => {
                 return (false, idx);
             }
