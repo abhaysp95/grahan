@@ -8,6 +8,7 @@ pub enum RType {
     Qquestion(Box<RType>),                   // match zero or one time for previous RType
     Wildcard,                                // match any character
     AltOr(Box<Vec<RType>>, Box<Vec<RType>>), // match (a|b), a or b
+    BackRefs(usize), // match for backref like \1
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -25,9 +26,10 @@ pub struct RE {
     pub anchor: StringAnchor,
 }
 
+pub struct BackRefs(Vec<RType>);
+
 pub fn get_regex_pattern(pattern: &str) -> RE {
     let mut re_pattern: Vec<RType> = vec![];
-    // let mut chiter: std::iter::Peekable<Chars>;
     let mut string_anchor = StringAnchor::None;
     let mut pattern = &pattern[..];
     if pattern.starts_with('^') {
@@ -38,7 +40,6 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         string_anchor = StringAnchor::End;
         pattern = &pattern[..pattern.len() - 1];
     }
-    // chiter = pattern.chars().peekable();
     let cpattern = pattern.chars().collect::<Vec<_>>();
     let mut pidx: usize = 0; // pattern index
     let mut idx = 0; // character index
@@ -83,35 +84,46 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 });
             }
             '(' => {
-                // get_regex_pattern(chiter.collect())
-                let re_left = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                 let mut found = false;
-                while idx < cpattern.len() {
-                    if cpattern[idx] == '|' {
+                let mut closing_dist = 0;
+                dbg!(idx);
+                while idx + closing_dist < cpattern.len() {
+                    if cpattern[idx + closing_dist] == ')' {
                         found = true;
                         break;
                     }
-                    idx += 1;
+                    closing_dist += 1;
                 }
-                if !found {
-                    panic!("Invalid regex pattern provided. Missing | for alternation.");
-                }
-                let re_right = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
-                found = false;
-                while idx < cpattern.len() {
-                    if cpattern[idx] == ')' {
-                        found = true;
-                        break;
-                    }
-                    idx += 1;
-                }
+                dbg!(closing_dist);
                 if !found {
                     panic!("Invalid regex pattern provided. Missing closing ) for opened (")
                 }
-                re_pattern.push(RType::AltOr(
-                    Box::new(re_left.rtype),
-                    Box::new(re_right.rtype),
-                ));
+                let mut pipe_dist = 0;
+                found = false;
+                while idx + pipe_dist < cpattern.len() {
+                    if cpattern[idx + pipe_dist] == '|' {
+                        found = true;
+                        break;
+                    }
+                    pipe_dist += 1;
+                }
+                dbg!(pipe_dist);
+                if found {
+                    let re_left = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
+                    idx += pipe_dist;
+                    dbg!(idx);
+                    let re_right = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
+                    idx += closing_dist - pipe_dist;
+                    dbg!(idx);
+                    dbg!(cpattern.len());
+                    re_pattern.push(RType::AltOr(
+                        Box::new(re_left.rtype),
+                        Box::new(re_right.rtype),
+                    ));
+                } else {
+                    // use for backref
+                    panic!("Invalid regex pattern provided. Missing | for alternation.");
+                }
             }
             '|' | ')' => {
                 // should go back to '(' match block
@@ -218,8 +230,6 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                 }
             }
             RType::AltOr(re_left, re_right) => {
-                // NOTE: considering that the alternation will happen where len of rtype in re_left
-                // and re_right is going to be same and no Qplus or Qquestion is going to be used
                 let left_status = match_here(
                     &input_line[idx..],
                     &RE {
