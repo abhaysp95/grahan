@@ -1,5 +1,3 @@
-use std::str::Chars;
-
 #[derive(Debug, Clone)]
 pub enum RType {
     Ch(char),              // character
@@ -9,6 +7,7 @@ pub enum RType {
     Qplus(Box<RType>),     // match one ore more time for previous RType
     Qquestion(Box<RType>), // match zero or one time for previous RType
     Wildcard,              // match any character
+    AltOr(Box<Vec<RType>>, Box<Vec<RType>>) // match (a|b), a or b
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -28,7 +27,7 @@ pub struct RE {
 
 pub fn get_regex_pattern(pattern: &str) -> RE {
     let mut re_pattern: Vec<RType> = vec![];
-    let mut chiter: std::iter::Peekable<Chars>;
+    // let mut chiter: std::iter::Peekable<Chars>;
     let mut string_anchor = StringAnchor::None;
     let mut pattern = &pattern[..];
     if pattern.starts_with('^') {
@@ -39,18 +38,19 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         string_anchor = StringAnchor::End;
         pattern = &pattern[..pattern.len() - 1];
     }
-    chiter = pattern.chars().peekable();
+    // chiter = pattern.chars().peekable();
+    let cpattern = pattern.chars().collect::<Vec<_>>();
     let mut pidx: usize = 0; // pattern index
+    let mut idx = 0; // character index
     'out: loop {
-        if chiter.peek().is_none() {
+        if idx == cpattern.len() {
             break 'out RE {
                 rtype: re_pattern,
                 anchor: string_anchor,
             };
         }
 
-        let c = chiter.next().unwrap();
-        match c {
+        match cpattern[idx] {
             '+' | '?' if pidx >= 1 => {
                 match re_pattern[pidx - 1] {
                     RType::Qplus(_) | RType::Qquestion(_) => {
@@ -58,7 +58,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     }
                     _ => {}
                 }
-                if c == '+' {
+                if cpattern[idx] == '+' {
                     re_pattern[pidx - 1] = RType::Qplus(Box::new(re_pattern[pidx - 1].clone()));
                 } else {
                     re_pattern[pidx - 1] = RType::Qquestion(Box::new(re_pattern[pidx - 1].clone()));
@@ -67,43 +67,80 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
             }
             '\\' => {
                 // TODO: add support to match '\' too, currently this logic ignores it
-                while let Some('\\') = chiter.peek() {
-                    chiter.next();
+                while '\\' == cpattern[idx+1] {
+                    idx += 1;
                 }
-                re_pattern.push(match chiter.next().unwrap() {
+                idx += 1;
+                re_pattern.push(match cpattern[idx] {
                     'd' => RType::Cgd,
                     'w' => RType::Cgw,
                     '+' => RType::Ch('+'),
                     _ => {
                         #[cfg(debug_assertions)]
-                        println!("=> {}", c);
+                        println!("=> {}", cpattern[idx]);
                         unreachable!();
                     }
                 });
-            }
+            },
+            '(' => {
+                // get_regex_pattern(chiter.collect())
+                let re_left = get_regex_pattern(&cpattern[idx..].iter().collect::<String>());
+                let mut found = false;
+                while idx < cpattern.len() {
+                    if cpattern[idx] == '|' {
+                        found = true;
+                        break;
+                    }
+                    idx += 1;
+                }
+                if !found {
+                    panic!("Invalid regex pattern provided. Missing | for alternation.");
+                }
+                let re_right = get_regex_pattern(&cpattern[idx+1..].iter().collect::<String>());
+                found = false;
+                while idx < cpattern.len() {
+                    if cpattern[idx] == ')' {
+                        found = true;
+                        break;
+                    }
+                    idx += 1;
+                }
+                if !found {
+                    panic!("Invalid regex pattern provided. Missing closing ) for opened (")
+                }
+                re_pattern.push(RType::AltOr(Box::new(re_left.rtype), Box::new(re_right.rtype)));
+            },
+            '|'|')' => {
+                // should go back to '(' match block
+                return RE {
+                    rtype: re_pattern,
+                    anchor: StringAnchor::None,
+                };
+            },
             '[' => {
                 // let's assume that we'll find ']' later on always, for now
                 let mut gmode = true;
-                if let Some(mode) = chiter.peek() {
-                    if mode == &'^' {
+                if idx+1 < cpattern.len() {
+                    if cpattern[idx+1] == '^' {
                         gmode = false;
-                        chiter.next();
+                        idx += 1;
                     }
                 }
                 let mut group = String::new();
-                while let Some(c) = chiter.next() {
-                    if c == ']' {
+                while idx < cpattern.len() {
+                    if cpattern[idx] == ']' {
                         break;
                     }
-                    group.push(c);
+                    group.push(cpattern[idx]);
+                    idx += 1;
                 }
                 re_pattern.push(RType::Ccl(group, gmode));
-            }
+            },
             '.' => re_pattern.push(RType::Wildcard),
-            _ => re_pattern.push(RType::Ch(c)),
+            _ => re_pattern.push(RType::Ch(cpattern[idx])),
         };
-
         pidx += 1;
+        idx += 1;
     }
 }
 
@@ -126,11 +163,11 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
             if let RType::Qplus(_) = re.rtype[0] {
                 #[cfg(debug_assertions)]
                 println!("+|? [if] new_re: {:?}", &new_re);
-                while match_here(&input_line[idx..], &new_re) {
+                while match_here(&input_line[idx..], &new_re).0 {
                     idx += 1;
                 }
             } else if let RType::Qquestion(_) = re.rtype[0] {
-                if match_here(&input_line[idx..], &new_re) {
+                if match_here(&input_line[idx..], &new_re).0 {
                     idx += 1;
                 }
             }
@@ -140,7 +177,7 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
     idx
 }
 
-fn match_here(input_line: &str, re_pattern: &RE) -> bool {
+fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
     let rtype_iter = re_pattern.rtype.iter().peekable();
@@ -148,7 +185,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
     println!("[here] {:?}: {:?}", &input_line, re_pattern);
     for rtype in rtype_iter {
         if idx == input_chars.len() {
-            return false;
+            return (false, idx);
         }
         #[cfg(debug_assertions)]
         println!("[here for] {:?}: {:?}", &input_line, rtype);
@@ -167,7 +204,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                 println!("[here for] +|? tidx: {}", tidx);
                 if let RType::Qplus(_) = rtype {
                     if tidx == 0 {
-                        return false;
+                        return (false, idx);
                     }
                 }
                 if tidx == 0 && idx != 0 {
@@ -176,9 +213,33 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                     // there's no point in subtracting if there's no match
                     idx += tidx - 1;
                 }
-            }
+            },
+            RType::AltOr(re_left, re_right) => {
+                // NOTE: considering that the alternation will happen where len of rtype in re_left
+                // and re_right is going to be same and no Qplus or Qquestion is going to be used
+                let left_status = match_here(&input_line[idx..], &RE {
+                    rtype: re_left.as_ref().clone(),
+                    anchor: StringAnchor::None,
+                });
+                if !left_status.0 {
+                    let right_status = match_here(&input_line[idx..], &RE {
+                        rtype: re_right.as_ref().clone(),
+                        anchor: StringAnchor::None,
+                    });
+                    if !right_status.0 {
+                        return (false, idx + left_status.1);
+                    }
+                    if right_status.1 > 0 {
+                        idx += right_status.1 - 1;
+                    }
+                } else {
+                    if left_status.1 > 0 {
+                        idx += left_status.1 - 1;
+                    }
+                }
+            },
             RType::Ch(c) if &input_chars[idx] != c => {
-                return false;
+                return (false, idx);
             }
             RType::Ccl(group, mode) => {
                 if *mode {
@@ -190,7 +251,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         }
                     }
                     if !is_match {
-                        return false;
+                        return (false, idx);
                     }
                 } else {
                     // for when mode is not true, will continue later
@@ -202,18 +263,18 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         }
                     }
                     if !is_match {
-                        return false;
+                        return (false, idx);
                     }
                 }
             }
             RType::Cgd => {
                 if !input_chars[idx].is_ascii_digit() {
-                    return false;
+                    return (false, idx);
                 }
             }
             RType::Cgw => {
                 if !input_chars[idx].is_ascii_alphanumeric() {
-                    return false;
+                    return (false, idx);
                 }
             }
             RType::Wildcard => {} // do nothing
@@ -223,22 +284,22 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
     }
     if idx < input_chars.len() {
         if let StringAnchor::End = re_pattern.anchor {
-            return false;
+            return (false, idx);
         }
     }
-    true
+    (true, idx)
 }
 
 pub fn match_pattern(input_line: &str, re: &RE) -> bool {
     if input_line.is_empty() {
         false
     } else if let StringAnchor::Start = re.anchor {
-        match_here(input_line, &re)
+        match_here(input_line, &re).0
     } else {
         if match_pattern(&input_line[1..], re) {
             return true;
         }
-        if !match_here(input_line, &re) {
+        if !match_here(input_line, &re).0 {
             return false;
         }
         true
