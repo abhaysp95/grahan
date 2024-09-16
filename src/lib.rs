@@ -111,6 +111,7 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
     // quantifier as RType
     assert_eq!(re.rtype.len(), 1);
 
+    #[cfg(debug_assertions)]
     println!("+|? {:?}: {:?}", &input_line, &re);
     match &re.rtype[0] {
         RType::Qplus(rtype) | RType::Qquestion(rtype) => {
@@ -118,8 +119,10 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
                 rtype: vec![*rtype.clone()],
                 anchor: StringAnchor::None,
             };
+            #[cfg(debug_assertions)]
             println!("+|? rtype: {:?}, {:?}", re.rtype[0], &re);
             if let RType::Qplus(_) = re.rtype[0] {
+                #[cfg(debug_assertions)]
                 println!("+|? [if] new_re: {:?}", &new_re);
                 while match_here(&input_line[idx..], &new_re) {
                     idx += 1;
@@ -139,14 +142,17 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
     let rtype_iter = re_pattern.rtype.iter().peekable();
+    #[cfg(debug_assertions)]
     println!("[here] {:?}: {:?}", &input_line, re_pattern);
     for rtype in rtype_iter {
         if idx == input_chars.len() {
             return false;
         }
+        #[cfg(debug_assertions)]
         println!("[here for] {:?}: {:?}", &input_line, rtype);
         match rtype {
             RType::Qplus(_) | RType::Qquestion(_) => {
+                #[cfg(debug_assertions)]
                 println!("[here for] calling +|? for rtype: {:?}", rtype);
                 let tidx = match_quantifier(
                     &input_line[idx..],
@@ -155,15 +161,16 @@ fn match_here(input_line: &str, re_pattern: &RE) -> bool {
                         anchor: StringAnchor::None, // match_quantifier doesn't need to know about StringAnchor
                     },
                 );
+                #[cfg(debug_assertions)]
                 println!("[here for] +|? tidx: {}", tidx);
                 if let RType::Qplus(_) = rtype {
                     if tidx == 0 {
                         return false;
                     }
                 }
-                // TODO: what if idx is 0, and tidx is also 0
-                // Fix this
-                idx += tidx - 1;
+                if tidx > 0 {  // there's no point in subtracting if there's no match
+                    idx += tidx - 1;
+                }
             },
             RType::Ch(c) if &input_chars[idx] != c => {
                 return false;
