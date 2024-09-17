@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RType {
     Ch(char),                                // character
     Ccl(String, bool),                       // character group, +ve/-ve
@@ -8,25 +8,24 @@ pub enum RType {
     Qquestion(Box<RType>),                   // match zero or one time for previous RType
     Wildcard,                                // match any character
     AltOr(Box<Vec<RType>>, Box<Vec<RType>>), // match (a|b), a or b
-    BackRefs(usize), // match for backref like \1
+    BackRefs(u8),                            // match for backref like \1
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
 // https://learn.microsoft.com/en-us/dotnet/standard/base-types/anchors-in-regular-expressions#start-of-string-only-a
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StringAnchor {
     Start,
     End,
     None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RE {
     pub rtype: Vec<RType>,
     pub anchor: StringAnchor,
+    pub backrefs: Option<Vec<Vec<RType>>>,
 }
-
-pub struct BackRefs(Vec<RType>);
 
 pub fn get_regex_pattern(pattern: &str) -> RE {
     let mut re_pattern: Vec<RType> = vec![];
@@ -43,11 +42,13 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
     let cpattern = pattern.chars().collect::<Vec<_>>();
     let mut pidx: usize = 0; // pattern index
     let mut idx = 0; // character index
+    let mut backrefs = vec![];
     'out: loop {
         if idx == cpattern.len() {
             break 'out RE {
                 rtype: re_pattern,
                 anchor: string_anchor,
+                backrefs: Some(backrefs),
             };
         }
 
@@ -76,6 +77,15 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     'd' => RType::Cgd,
                     'w' => RType::Cgw,
                     '+' => RType::Ch('+'),
+                    '1'..'9' => {
+                        // keeping it single digit for now
+                        RType::BackRefs(
+                            cpattern[idx]
+                                .to_digit(10)
+                                .expect("back-reference should be a number")
+                                as u8,
+                        )
+                    }
                     _ => {
                         #[cfg(debug_assertions)]
                         println!("=> {}", cpattern[idx]);
@@ -109,20 +119,22 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 }
                 dbg!(pipe_dist);
                 if found {
-                    let re_left = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
+                    let re_left =
+                        get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                     idx += pipe_dist;
                     dbg!(idx);
-                    let re_right = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
+                    let re_right =
+                        get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                     idx += closing_dist - pipe_dist;
                     dbg!(idx);
                     dbg!(cpattern.len());
-                    re_pattern.push(RType::AltOr(
-                        Box::new(re_left.rtype),
-                        Box::new(re_right.rtype),
-                    ));
+                    let rtype = RType::AltOr(Box::new(re_left.rtype), Box::new(re_right.rtype));
+                    backrefs.push(vec![rtype.clone()]);
+                    re_pattern.push(rtype);
                 } else {
-                    // use for backref
-                    panic!("Invalid regex pattern provided. Missing | for alternation.");
+                    let re = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
+                    idx += closing_dist;
+                    backrefs.push(re.rtype);
                 }
             }
             '|' | ')' => {
@@ -130,6 +142,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 return RE {
                     rtype: re_pattern,
                     anchor: StringAnchor::None,
+                    backrefs: Some(backrefs),
                 };
             }
             '[' => {
@@ -172,6 +185,7 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
             let new_re = RE {
                 rtype: vec![*rtype.clone()],
                 anchor: StringAnchor::None,
+                backrefs: None,
             };
             #[cfg(debug_assertions)]
             println!("+|? rtype: {:?}, {:?}", re.rtype[0], &re);
@@ -213,6 +227,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     &RE {
                         rtype: vec![rtype.clone()],
                         anchor: StringAnchor::None, // match_quantifier doesn't need to know about StringAnchor
+                        backrefs: None,
                     },
                 );
                 #[cfg(debug_assertions)]
@@ -235,6 +250,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     &RE {
                         rtype: re_left.as_ref().clone(),
                         anchor: StringAnchor::None,
+                        backrefs: None,
                     },
                 );
                 if !left_status.0 {
@@ -243,6 +259,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                         &RE {
                             rtype: re_right.as_ref().clone(),
                             anchor: StringAnchor::None,
+                            backrefs: None,
                         },
                     );
                     if !right_status.0 {
@@ -327,7 +344,7 @@ pub fn match_pattern(input_line: &str, re: &RE) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::{get_regex_pattern, match_pattern, match_quantifier};
+    use super::*;
 
     #[test]
     fn quantifier_plus() {
@@ -352,5 +369,30 @@ mod test {
         let re_pattern = get_regex_pattern("ca?t");
         let input_line = "cat";
         assert_eq!(match_pattern(&input_line, &re_pattern), true);
+    }
+
+    #[test]
+    fn regex_pattern_backref_test() {
+        let re_string = "e.(g+|h?)o+\\1d$";
+        let expected_re = RE {
+            rtype: vec![
+                RType::Ch('e'),
+                RType::Wildcard,
+                RType::AltOr(
+                    Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                    Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+                ),
+                RType::Qplus(Box::new(RType::Ch('o'))),
+                RType::BackRefs(1),
+                RType::Ch('d'),
+            ],
+            anchor: crate::StringAnchor::End,
+            backrefs: Some(vec![vec![RType::AltOr(
+                Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+            )]]),
+        };
+        let actual_re = get_regex_pattern(re_string);
+        assert_eq!(actual_re, expected_re);
     }
 }
