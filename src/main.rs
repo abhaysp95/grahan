@@ -16,7 +16,7 @@ fn main() {
 
     io::stdin().read_line(&mut input_line).unwrap();
 
-    let re_pattern = get_regex_pattern(&pattern);
+    let mut re_pattern = get_regex_pattern(&pattern);
     #[cfg(debug_assertions)]
     {
         println!("--------final re pattern--------");
@@ -29,7 +29,7 @@ fn main() {
         }
     }
 
-    if match_pattern(&input_line, &re_pattern) {
+    if match_pattern(&input_line, &mut re_pattern) {
         process::exit(0);
     } else {
         process::exit(1);

@@ -25,7 +25,7 @@ pub enum StringAnchor {
 pub struct RE {
     pub rtype: Vec<RType>,
     pub anchor: StringAnchor,
-    pub backrefs: Option<Vec<Vec<RType>>>,
+    pub backrefs: Option<Vec<(Vec<RType>, Option<String>)>>,
 }
 
 pub fn get_regex_pattern(pattern: &str) -> RE {
@@ -149,7 +149,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                         dbg!(cpattern.len());
                     }
                     let rtype = RType::AltOr(Box::new(re_left.rtype), Box::new(re_right.rtype));
-                    backrefs.push(vec![rtype.clone()]);
+                    backrefs.push((vec![rtype.clone()], None));
                     re_pattern.push(rtype);
                 } else {
                     let re = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
@@ -157,7 +157,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     #[cfg(debug_assertions)]
                     dbg!(idx);
                     // TODO: push capture group here
-                    backrefs.push(re.rtype.clone());
+                    backrefs.push((re.rtype.clone(), None));
                     re_pattern.push(RType::Capture(Box::new(re.rtype)));
                 }
                 #[cfg(debug_assertions)]
@@ -216,7 +216,7 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
     println!("+|? {:?}: {:?}", &input_line, &re);
     match &re.rtype[0] {
         RType::Qplus(rtype) | RType::Qquestion(rtype) => {
-            let new_re = RE {
+            let mut new_re = RE {
                 rtype: vec![*rtype.clone()],
                 anchor: StringAnchor::None,
                 backrefs: None,
@@ -226,11 +226,11 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
             if let RType::Qplus(_) = re.rtype[0] {
                 #[cfg(debug_assertions)]
                 println!("+|? [if] new_re: {:?}", &new_re);
-                while match_here(&input_line[idx..], &new_re).0 {
+                while match_here(&input_line[idx..], &mut new_re).0 {
                     idx += 1;
                 }
             } else if let RType::Qquestion(_) = re.rtype[0] {
-                if match_here(&input_line[idx..], &new_re).0 {
+                if match_here(&input_line[idx..], &mut new_re).0 {
                     idx += 1;
                 }
             }
@@ -240,7 +240,7 @@ fn match_quantifier(input_line: &str, re: &RE) -> usize {
     idx
 }
 
-fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
+fn match_here(input_line: &str, re_pattern: &mut RE) -> (bool, usize) {
     let input_chars = input_line.chars().collect::<Vec<_>>();
     let mut idx = 0;
     let rtype_iter = re_pattern.rtype.iter().peekable();
@@ -281,7 +281,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
             RType::AltOr(re_left, re_right) => {
                 let left_status = match_here(
                     &input_line[idx..],
-                    &RE {
+                    &mut RE {
                         rtype: re_left.as_ref().clone(),
                         anchor: StringAnchor::None,
                         backrefs: None,
@@ -290,7 +290,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                 if !left_status.0 {
                     let right_status = match_here(
                         &input_line[idx..],
-                        &RE {
+                        &mut RE {
                             rtype: re_right.as_ref().clone(),
                             anchor: StringAnchor::None,
                             backrefs: None,
@@ -299,10 +299,38 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     if !right_status.0 {
                         return (false, idx + left_status.1);
                     }
+                    if let Some(ref mut backrefs) = re_pattern.backrefs {
+                        for backref in backrefs.iter_mut() {
+                            match backref.1 {
+                                Some(_) => {}
+                                None => {
+                                    backref.1 =
+                                        Some(input_line[idx..idx + right_status.1].to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        #[cfg(debug_assertions)]
+                        println!("new backrefs: {:?}", re_pattern.backrefs.as_ref().unwrap());
+                    }
                     if right_status.1 > 0 {
                         idx += right_status.1 - 1;
                     }
                 } else {
+                    if let Some(ref mut backrefs) = re_pattern.backrefs {
+                        for backref in backrefs.iter_mut() {
+                            match backref.1 {
+                                Some(_) => {}
+                                None => {
+                                    backref.1 =
+                                        Some(input_line[idx..idx + left_status.1].to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        #[cfg(debug_assertions)]
+                        println!("new backrefs: {:?}", re_pattern.backrefs.as_ref().unwrap());
+                    }
                     if left_status.1 > 0 {
                         idx += left_status.1 - 1;
                     }
@@ -318,7 +346,7 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                 );
                 let match_status = match_here(
                     &input_line[idx..],
-                    &RE {
+                    &mut RE {
                         rtype: cg.as_ref().clone(),
                         anchor: StringAnchor::None,
                         backrefs: None,
@@ -326,6 +354,21 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                 );
                 if !match_status.0 {
                     return (false, idx + match_status.1);
+                }
+                #[cfg(debug_assertions)]
+                println!("Captured: {:?}", &input_line[idx..idx + match_status.1]);
+                if let Some(ref mut backrefs) = re_pattern.backrefs {
+                    for backref in backrefs.iter_mut() {
+                        match backref.1 {
+                            Some(_) => {}
+                            None => {
+                                backref.1 = Some(input_line[idx..idx + match_status.1].to_string());
+                                break;
+                            }
+                        }
+                    }
+                    #[cfg(debug_assertions)]
+                    println!("new backrefs: {:?}", re_pattern.backrefs.as_ref().unwrap());
                 }
                 if match_status.1 > 0 {
                     idx += match_status.1 - 1;
@@ -336,6 +379,9 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     panic!("Backref can't be 0");
                 }
                 if let Some(backrefs) = re_pattern.backrefs.as_ref() {
+                    if *bnum - 1 >= backrefs.len() as u8 {
+                        panic!("Not enough capture groups for backref count: {}", *bnum)
+                    }
                     #[cfg(debug_assertions)]
                     println!(
                         "Backrefs idx: {}, bnum: {:?}, backref: {:?}, input_line: {}",
@@ -344,19 +390,30 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                         &backrefs,
                         &input_line[idx..]
                     );
-                    let ref_match_status = match_here(
-                        &input_line[idx..],
-                        &RE {
-                            rtype: backrefs[(*bnum - 1) as usize].clone(),
-                            anchor: StringAnchor::None,
-                            backrefs: None,
-                        },
-                    );
-                    if !ref_match_status.0 {
-                        return (false, idx + ref_match_status.1);
-                    }
-                    if ref_match_status.1 > 0 {
-                        idx += ref_match_status.1 - 1;
+                    let backref = &backrefs[(*bnum - 1) as usize];
+                    if let Some(captured_string) = backref.1.as_ref() {
+                        if idx + captured_string.len() > input_line.len() {
+                            panic!(
+                                "String length not enough to match capture group.
+                                idx: {}, captured_string.len(): {}, input_line.len(): {}, bnum: {}",
+                                idx,
+                                captured_string.len(),
+                                input_line.len(),
+                                *bnum
+                            );
+                        }
+                        if !captured_string.eq(&input_line[idx..idx + captured_string.len()]) {
+                            #[cfg(debug_assertions)]
+                            println!(
+                                "Failed match, captured_string: {}, actual_string: {}",
+                                captured_string,
+                                &input_line[idx..idx + captured_string.len()]
+                            );
+                            return (false, idx + captured_string.len());
+                        }
+                        if captured_string.len() > 0 {
+                            idx += captured_string.len() - 1;
+                        }
                     }
                 }
             }
@@ -412,16 +469,21 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
     (true, idx)
 }
 
-pub fn match_pattern(input_line: &str, re: &RE) -> bool {
+pub fn match_pattern(input_line: &str, mut re: &mut RE) -> bool {
     if input_line.is_empty() {
         false
     } else if let StringAnchor::Start = re.anchor {
-        match_here(input_line, &re).0
+        match_here(input_line, &mut re).0
     } else {
         if match_pattern(&input_line[1..], re) {
             return true;
         }
-        if !match_here(input_line, &re).0 {
+        if !match_here(input_line, &mut re).0 {
+            if let Some(backrefs) = re.backrefs.as_mut() {
+                for backref in backrefs.iter_mut() {
+                    backref.1 = None;
+                }
+            }
             return false;
         }
         true
@@ -440,21 +502,21 @@ mod test {
 
     #[test]
     fn full_pattern_quantifier_plus() {
-        let re_pattern = get_regex_pattern("g+o+$");
+        let mut re_pattern = get_regex_pattern("g+o+$");
         let input_line = "logs are good";
-        assert_eq!(match_pattern(&input_line, &re_pattern), false);
-        let re_pattern = get_regex_pattern("g+o+d$");
-        assert_eq!(match_pattern(&input_line, &re_pattern), true);
+        assert_eq!(match_pattern(&input_line, &mut re_pattern), false);
+        let mut re_pattern = get_regex_pattern("g+o+d$");
+        assert_eq!(match_pattern(&input_line, &mut re_pattern), true);
     }
 
     #[test]
     fn full_pattern_quantifier_question() {
-        let re_pattern = get_regex_pattern("g+l?o+d$");
+        let mut re_pattern = get_regex_pattern("g+l?o+d$");
         let input_line = "logs are good";
-        assert_eq!(match_pattern(&input_line, &re_pattern), true);
-        let re_pattern = get_regex_pattern("ca?t");
+        assert_eq!(match_pattern(&input_line, &mut re_pattern), true);
+        let mut re_pattern = get_regex_pattern("ca?t");
         let input_line = "cat";
-        assert_eq!(match_pattern(&input_line, &re_pattern), true);
+        assert_eq!(match_pattern(&input_line, &mut re_pattern), true);
     }
 
     #[test]
@@ -473,10 +535,13 @@ mod test {
                 RType::Ch('d'),
             ],
             anchor: crate::StringAnchor::End,
-            backrefs: Some(vec![vec![RType::AltOr(
-                Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
-                Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
-            )]]),
+            backrefs: Some(vec![(
+                vec![RType::AltOr(
+                    Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                    Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+                )],
+                None,
+            )]),
         };
         let actual_re = get_regex_pattern(re_string);
         assert_eq!(actual_re, expected_re);
@@ -501,11 +566,14 @@ mod test {
             ],
             anchor: crate::StringAnchor::End,
             backrefs: Some(vec![
-                vec![RType::AltOr(
-                    Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
-                    Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
-                )],
-                vec![RType::Ch('l'), RType::Ch('d')],
+                (
+                    vec![RType::AltOr(
+                        Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                        Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+                    )],
+                    None,
+                ),
+                (vec![RType::Ch('l'), RType::Ch('d')], None),
             ]),
         };
         let actual_re = get_regex_pattern(re_string);
