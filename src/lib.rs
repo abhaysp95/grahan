@@ -9,6 +9,7 @@ pub enum RType {
     Wildcard,                                // match any character
     AltOr(Box<Vec<RType>>, Box<Vec<RType>>), // match (a|b), a or b
     BackRefs(u8),                            // match for backref like \1
+    Capture(Box<Vec<RType>>),                // capture multiple of RType within ()
 }
 
 // NOTE: we'll be ignoring multi-line regex, so start/end anchor for newline is ignored read:
@@ -117,25 +118,36 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     }
                     pipe_dist += 1;
                 }
+                #[cfg(debug_assertions)]
                 dbg!(pipe_dist);
                 if found {
                     let re_left =
                         get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                     idx += pipe_dist;
+                    #[cfg(debug_assertions)]
                     dbg!(idx);
                     let re_right =
                         get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                     idx += closing_dist - pipe_dist;
-                    dbg!(idx);
-                    dbg!(cpattern.len());
+                    #[cfg(debug_assertions)]
+                    {
+                        dbg!(idx);
+                        dbg!(cpattern.len());
+                    }
                     let rtype = RType::AltOr(Box::new(re_left.rtype), Box::new(re_right.rtype));
                     backrefs.push(vec![rtype.clone()]);
                     re_pattern.push(rtype);
                 } else {
                     let re = get_regex_pattern(&cpattern[idx + 1..].iter().collect::<String>());
                     idx += closing_dist;
-                    backrefs.push(re.rtype);
+                    #[cfg(debug_assertions)]
+                    dbg!(idx);
+                    // TODO: push capture group here
+                    backrefs.push(re.rtype.clone());
+                    re_pattern.push(RType::Capture(Box::new(re.rtype)));
                 }
+                #[cfg(debug_assertions)]
+                dbg!("match capture group end");
             }
             '|' | ')' => {
                 // should go back to '(' match block
@@ -274,6 +286,58 @@ fn match_here(input_line: &str, re_pattern: &RE) -> (bool, usize) {
                     }
                 }
             }
+            RType::Capture(cg) => {
+                #[cfg(debug_assertions)]
+                println!(
+                    "Capture idx: {}, cg: {:?}, input_line: {}",
+                    idx,
+                    &cg,
+                    &input_line[idx..]
+                );
+                let match_status = match_here(
+                    &input_line[idx..],
+                    &RE {
+                        rtype: cg.as_ref().clone(),
+                        anchor: StringAnchor::None,
+                        backrefs: None,
+                    },
+                );
+                if !match_status.0 {
+                    return (false, idx + match_status.1);
+                }
+                if match_status.1 > 0 {
+                    idx += match_status.1 - 1;
+                }
+            }
+            RType::BackRefs(bnum) => {
+                if *bnum == 0 {
+                    panic!("Backref can't be 0");
+                }
+                if let Some(backrefs) = re_pattern.backrefs.as_ref() {
+                    #[cfg(debug_assertions)]
+                    println!(
+                        "Backrefs idx: {}, bnum: {:?}, backref: {:?}, input_line: {}",
+                        idx,
+                        bnum,
+                        &backrefs,
+                        &input_line[idx..]
+                    );
+                    let ref_match_status = match_here(
+                        &input_line[idx..],
+                        &RE {
+                            rtype: backrefs[(*bnum - 1) as usize].clone(),
+                            anchor: StringAnchor::None,
+                            backrefs: None,
+                        },
+                    );
+                    if !ref_match_status.0 {
+                        return (false, idx + ref_match_status.1);
+                    }
+                    if ref_match_status.1 > 0 {
+                        idx += ref_match_status.1 - 1;
+                    }
+                }
+            }
             RType::Ch(c) if &input_chars[idx] != c => {
                 return (false, idx);
             }
@@ -391,6 +455,36 @@ mod test {
                 Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
                 Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
             )]]),
+        };
+        let actual_re = get_regex_pattern(re_string);
+        assert_eq!(actual_re, expected_re);
+    }
+
+    #[test]
+    fn regex_pattern_multi_backref_test() {
+        let re_string = "e.(g+|h?)(ld)o+\\1d\\2$";
+        let expected_re = RE {
+            rtype: vec![
+                RType::Ch('e'),
+                RType::Wildcard,
+                RType::AltOr(
+                    Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                    Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+                ),
+                RType::Capture(Box::new(vec![RType::Ch('l'), RType::Ch('d')])),
+                RType::Qplus(Box::new(RType::Ch('o'))),
+                RType::BackRefs(1),
+                RType::Ch('d'),
+                RType::BackRefs(2),
+            ],
+            anchor: crate::StringAnchor::End,
+            backrefs: Some(vec![
+                vec![RType::AltOr(
+                    Box::new(vec![RType::Qplus(Box::new(RType::Ch('g')))]),
+                    Box::new(vec![RType::Qquestion(Box::new(RType::Ch('h')))]),
+                )],
+                vec![RType::Ch('l'), RType::Ch('d')],
+            ]),
         };
         let actual_re = get_regex_pattern(re_string);
         assert_eq!(actual_re, expected_re);
