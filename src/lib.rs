@@ -55,6 +55,14 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
 
         match cpattern[idx] {
             '+' | '?' if pidx >= 1 => {
+                #[cfg(debug_assertions)]
+                {
+                    dbg!("match quantifier start");
+                    dbg!(idx);
+                    dbg!(pidx);
+                    dbg!(re_pattern.len());
+                    println!("{:?}", re_pattern);
+                }
                 match re_pattern[pidx - 1] {
                     RType::Qplus(_) | RType::Qquestion(_) => {
                         panic!("Quantifier can't be applied to another quantifier")
@@ -67,6 +75,8 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     re_pattern[pidx - 1] = RType::Qquestion(Box::new(re_pattern[pidx - 1].clone()));
                 }
                 pidx -= 1;
+                #[cfg(debug_assertions)]
+                dbg!("match quantifier end");
             }
             '\\' => {
                 // TODO: add support to match '\' too, currently this logic ignores it
@@ -95,8 +105,11 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                 });
             }
             '(' => {
+                #[cfg(debug_assertions)]
+                dbg!("match capture group start");
                 let mut found = false;
                 let mut closing_dist = 0;
+                #[cfg(debug_assertions)]
                 dbg!(idx);
                 while idx + closing_dist < cpattern.len() {
                     if cpattern[idx + closing_dist] == ')' {
@@ -105,6 +118,7 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
                     }
                     closing_dist += 1;
                 }
+                #[cfg(debug_assertions)]
                 dbg!(closing_dist);
                 if !found {
                     panic!("Invalid regex pattern provided. Missing closing ) for opened (")
@@ -181,6 +195,14 @@ pub fn get_regex_pattern(pattern: &str) -> RE {
         };
         pidx += 1;
         idx += 1;
+        #[cfg(debug_assertions)]
+        {
+            println!("------------Reached End---------------");
+            dbg!(idx);
+            dbg!(pidx);
+            println!("rp: {:?}", &re_pattern);
+            println!("------------Ended---------------");
+        }
     }
 }
 

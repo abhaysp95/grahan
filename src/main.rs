@@ -18,8 +18,15 @@ fn main() {
 
     let re_pattern = get_regex_pattern(&pattern);
     #[cfg(debug_assertions)]
-    for re in re_pattern.rtype.iter() {
-        println!("{:?}", re);
+    {
+        println!("--------final re pattern--------");
+        for re in re_pattern.rtype.iter() {
+            println!("{:?}", re);
+        }
+        println!("----------------");
+        for backref in re_pattern.backrefs.iter() {
+            println!("{:?}", backref);
+        }
     }
 
     if match_pattern(&input_line, &re_pattern) {
