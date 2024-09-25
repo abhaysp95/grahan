@@ -1,5 +1,35 @@
 [![progress-banner](https://backend.codecrafters.io/progress/grep/b610a9c0-eb99-486f-bf59-c7c4b83061aa)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
+# Grahan
+
+A simple regex based utility tool made to learn more about how regex works and regex based tools work internally.
+
+### 📖 Learnings
+
+Here are something the things which I learned:
+
+* Match literals
+* Match for +ve character class
+* Match for -ve character class
+* Match combination of character classes
+* Match for start of string anchor
+* Match for end of string anchor
+* Match for one or more time
+* Match for zero or one time
+* Match for wildcard
+* Match alternation
+* Capture groups and backreferences (multiple)
+
+### ⚡️ Requirements
+
+The project is built in `Rust` language. I'm genuinly enjoying the going through the experiencing of learning and using rust simultaneously.
+
+There are lots of benefits of using rust, but it comes with steep learning curve and projects like these are great way to learn a language like Rust.
+
+---
+
+The following project was done as part of **Codecrafters** challenge. You can read more about the codecrafters from below.
+
 This is a starting point for Rust solutions to the
 ["Build Your Own grep" Challenge](https://app.codecrafters.io/courses/grep/overview).
 
@@ -14,26 +44,3 @@ expressions are evaluated.
 
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
-
-# Passing the first stage
-
-The entry point for your `grep` implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
-
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
-```
-
-Time to move on to the next stage!
-
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `cargo (1.80)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
